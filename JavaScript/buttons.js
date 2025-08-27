@@ -6,7 +6,8 @@
 
 // Глобальные переменные
 let currentExpression = ""; // Глобальное выражение для ввода
-let currentNumber = ""; // Переменная для хранения текущего числа
+let hasResult = false;
+let currentNumber = "0"; // Переменная для хранения текущего числа
 let currentOperation = "";
 let currentRegularBrackets = "";
 let Pi = 3.1415926535;
@@ -27,8 +28,12 @@ let cosFlag = 0;
 let tgFlag = 0;
 let arcFlag = 0;
 let expFlag = 0;
+let vpFlag = false;
 let inverseFlag = 0;
 let yDegreeFlag = 0;
+let quadricSumFlag = 0;
+let forZap = "";
+let callMemFlag = 0;
 
 let openBrackets = 0;
 let closeBrackets = 0;
@@ -91,17 +96,23 @@ function formatNumberAuto(number) {
     if (isNaN(number)) return errorMessage;
 
     // Преобразуем строку в число (если не уже)
-    const num = Number(number);
+    num = Number(number);
     // Условие для выбора формата
-    if ((Math.abs(num) >= 1e-9 && Math.abs(num) < 1e9) || Math.abs(num) == 0) {
+    if(vpFlag&&hasResult){
+        num=math.string(math.format(num,{notation:'exponential'}));
+        vpFlag=false;
+        return num.replace(/[eE]/, " ");
+    }else{
+        if ((Math.abs(num) >= 1e-9 && Math.abs(num) < 1e9) || Math.abs(num) == 0) {
         return num
             .toFixed(6)
             .replace(/(\.\d*?)0+$/, "$1")
             .replace(/\.$/, ".");
-    } else {
+        } else {
         console.log("Exponential conversion has occurred.");
 
         return num.toExponential(9).replace(/[eE]/, " "); // Экспоненциальный формат с 6 знаками в мантиссе
+        }
     }
 }
 
@@ -118,6 +129,7 @@ function updateScreen() {
     // Форматируем число в зависимости от значения
     const displayValue = formatNumberAuto(currentReg || "0");
     screenText.textContent = displayValue;
+    forZap = displayValue;
     
     // Логирование состояния
     try {
@@ -168,19 +180,62 @@ function handleInput(value) {
     switch (true) {
         // Ввод цифр и точки
         case /[0-9.]/.test(value):
-            if (/^0.$/.test(currentExpression)) {
-                currentExpression = currentExpression.replace("0", "");
+            if (zapFlag == 1 && value ==="1"){
+                if(forZap.endsWith('.')){
+                    forZap=forZap.slice(0,-1);
+                }
+                register1 = forZap;
+                zapFlag = 0;
+                break;
             }
-            currentNumber += value;
+            if (zapFlag == 1 && value === "2"){
+                if(forZap[-1].endsWith('.')){
+                    forZap=forZap.slice(0,-1);
+                }
+                register2 = forZap;
+                zapFlag = 0;
+                break;
+            }
+            if (callMemFlag == 1 && value ==="1"){
+                currentNumber = register1;
+                callMemFlag = 0;
+                break;
+            }
+            if (callMemFlag == 1 && value === "2"){
+                currentNumber = register2;
+                callMemFlag = 0;
+                break;
+            }
+            if(hasResult){
+                hasResult =false;
+                currentNumber="";
+                updateScreen();
+            }
+            if (currentNumber ==="0"){
+                if(value==="."){
+                    currentNumber+=value;
+                }else{
+                    currentNumber = value.toString();
+                }
+            }else{
+                currentNumber += value
+            }
+            
             break;
 
         // Базовые арифметические операции
         case /[\-+*/]/.test(value):
             if (isOperation(currentOperation)) {
                 bracketFlagCheck(currentOperation);
-                currentOperation = value;
-                currentExpression += value;
-                currentNumber = "";
+                if(quadricSumFlag == 1){
+                    currentExpression=currentExpression+currentNumber+"^2)";
+                    quadricSumFlag = 0;
+                    currentNumber ="";
+                }else{
+                    currentOperation = value;
+                    currentExpression += value;
+                    currentNumber = "";
+                }
                 break;
             } else {
                 currentOperation = value;
@@ -203,7 +258,7 @@ function handleInput(value) {
             if (openBrackets > closeBrackets) {
                 currentExpression += currentNumber + value;
             } else if (openBrackets === closeBrackets || openBrackets == 0) {
-                currentExpression = "(" + currentExpression + value;
+                currentExpression = "(" + currentExpression+currentNumber + value;
             }
             currentOperation = "";
             currentNumber = "";
@@ -211,13 +266,13 @@ function handleInput(value) {
 
         // Очистка последнего числа (CX)
         case /cx$/.test(value):
-            currentNumber = "";
+            currentNumber = "0";
             break;
             
         // Полная очистка (C)
         case /c$/.test(value):
             clearAll();
-            currentNumber = "";
+            currentNumber = "0";
             break;
 
         // Константа pi
@@ -232,23 +287,29 @@ function handleInput(value) {
                 }
             }
             // Добавляем π в выражение с пробелами для разделения
-            currentExpression += " " + Pi + " ";
+            // currentExpression += " " + formatNumberAuto(Pi) + " ";
             // Устанавливаем текущее число как π для отображения на экране
-            currentNumber = formatNumberAuto(Pi);
+            currentNumber = Pi;
             break;
             
         // Функция P (корень из суммы квадратов)
         case /p$/.test(value):
             currentOperation = value;
+            const lastIndex = currentExpression.lastIndexOf(currentNumber);
+            currentExpression = currentExpression.substring(0,lastIndex)+"sqrt("+currentNumber+"^2+";
             tempExpression = "sqrt(" + currentNumber + "^2+";
+            quadricSumFlag = 1;
             currentNumber = "";
             break;
             
         // Инвертирование знака
+        case /scienseForm$/.test(value):
+            vpFlag=true;
+            break;
         case /negate$/.test(value):
             if (currentNumber) {
                 currentNumber = (parseFloat(currentNumber) * -1).toString();
-                currentExpression += "(-1)";
+                //currentExpression += "(-1)";
             }
             break;
             
@@ -256,10 +317,8 @@ function handleInput(value) {
         case /lg$/.test(value):
             currentOperation = value;
             if (currentExpression.endsWith(")")) {
-                temp = extractBrackets(currentExpression);
-                console.log("temp.lastBrackets: " + temp.lastBrackets);
-                currentExpression =
-                    temp.updatedExpression + "log10" + temp.lastBrackets;
+                temp=extractLastExpression();
+                currentExpression = temp.beforeBrackets+"log10" + "("+temp.brackets+")";
             } else {
                 console.log("LG CHECK NO BRACKETS )");
                 if (currentExpression != currentNumber) {
@@ -274,10 +333,8 @@ function handleInput(value) {
         case /ln$/.test(value):
             currentOperation = value;
             if (currentExpression.endsWith(")")) {
-                temp = extractBrackets(currentExpression);
-                console.log("ln temp.lastBrackets: " + temp.lastBrackets);
-                currentExpression =
-                    temp.updatedExpression + "log" + temp.lastBrackets;
+                temp=extractLastExpression();
+                currentExpression = temp.beforeBrackets+"log" + "("+temp.brackets+")";
             } else {
                 console.log("Ln CHECK NO BRACKETS )");
                 if (currentExpression != currentNumber) {
@@ -294,8 +351,8 @@ function handleInput(value) {
             if (arcFlag) {
                 // Арксинус
                 if (currentExpression.endsWith(")")) {
-                    temp = extractBrackets(currentExpression);
-                    currentExpression = temp.updatedExpression + "asin" + temp.lastBrackets;
+                    temp = extractLastExpression();
+                    currentExpression = temp.beforeBrackets + "asin" + "("+temp.brackets+")";
                 } else {
                     sinFlag = 1;
                     bracketFlagCheck("arcsin");
@@ -304,8 +361,8 @@ function handleInput(value) {
             } else {
                 // Обычный синус
                 if (currentExpression.endsWith(")")) {
-                    temp = extractBrackets(currentExpression);
-                    currentExpression = temp.updatedExpression + "sin" + temp.lastBrackets;
+                    temp = extractLastExpression();
+                    currentExpression = temp.beforeBrackets + "sin" + "("+temp.brackets+")";
                 } else {
                     sinFlag = 1;
                     bracketFlagCheck(value);
@@ -320,18 +377,21 @@ function handleInput(value) {
             if (arcFlag) {
                 // Арккосинус
                 if (currentExpression.endsWith(")")) {
-                    temp = extractBrackets(currentExpression);
-                    currentExpression = temp.updatedExpression + "acos" + temp.lastBrackets;
+                    //extractBrackets(currentExpression);
+                    temp =extractLastExpression();
+                    //normalizeBrackets();
+                    currentExpression = temp.beforeBrackets+ "acos" + "("+temp.brackets+")";
                 } else {
                     cosFlag = 1;
                     bracketFlagCheck("arccos");
                 }
                 arcFlag = 0;
             } else {
+                //tmp = extractLastExpression();
                 // Обычный косинус
                 if (currentExpression.endsWith(")")) {
-                    temp = extractBrackets(currentExpression);
-                    currentExpression = temp.updatedExpression + "cos" + temp.lastBrackets;
+                    temp =extractLastExpression();
+                    currentExpression = temp.beforeBrackets+"cos" + "("+temp.brackets+")";
                 } else {
                     cosFlag = 1;
                     bracketFlagCheck(value);
@@ -346,8 +406,8 @@ function handleInput(value) {
             if (arcFlag) {
                 // Арктангенс
                 if (currentExpression.endsWith(")")) {
-                    temp = extractBrackets(currentExpression);
-                    currentExpression = temp.updatedExpression + "atan" + temp.lastBrackets;
+                    temp =extractLastExpression();;
+                    currentExpression = temp.beforeBrackets + "atan" + "("+temp.brackets+")";
                 } else {
                     tgFlag = 1;
                     bracketFlagCheck("arctg");
@@ -356,9 +416,10 @@ function handleInput(value) {
             } else {
                 // Обычный тангенс
                 if (currentExpression.endsWith(")")) {
-                    temp = extractBrackets(currentExpression);
-                    currentExpression = temp.updatedExpression + "tan" + temp.lastBrackets;
+                    temp = extractLastExpression();
+                    currentExpression = temp.beforeBrackets + "tan" + "("+temp.brackets+")";
                 } else {
+
                     tgFlag = 1;
                     bracketFlagCheck(value);
                 }
@@ -367,16 +428,19 @@ function handleInput(value) {
             break;
             
         // Режим арк-функций
-        case /arc$/.test(value):
+        case /ark$/.test(value):
+            console.log("arc");
             arcFlag = 1;
+            console.log(currentExpression);
             break;
             
         // Экспонента (e^x)
         case /exp_degree$/.test(value):
             currentOperation = value;
+        
             if (currentExpression.endsWith(")")) {
-                temp = extractBrackets(currentExpression);
-                currentExpression = temp.updatedExpression + `(${e_const})^` + temp.lastBrackets;
+                temp = extractLastExpression();
+                currentExpression =temp.beforeBrackets+ `(${e_const})^` +"("+temp.brackets+")";
             } else {
                 expFlag = 1;
                 bracketFlagCheck(value);
@@ -391,8 +455,8 @@ function handleInput(value) {
                 bracketFlagCheck(value);
                 currentNumber = "";
             } else if (currentExpression.endsWith(")")) {
-                temp = extractBrackets(currentExpression);
-                currentExpression = temp.updatedExpression + "1/" + temp.lastBrackets;
+                temp = extractLastExpression();
+                currentExpression = temp.beforeBrackets + "1/" + "("+temp.brackets+")";
                 currentNumber = "";
             }
             break;
@@ -400,8 +464,8 @@ function handleInput(value) {
         // Квадратный корень
         case /sqrt$/.test(value):
             if (currentExpression.endsWith(")")) {
-                temp = extractBrackets(currentExpression);
-                currentExpression = temp.updatedExpression + "sqrt" + temp.lastBrackets;
+                temp = extractLastExpression;
+                currentExpression = temp.beforeBrackets + "sqrt" +"("+temp.brackets+")";
             } else {
                 currentExpression += "sqrt(" + currentNumber + ")";
                 currentNumber = "";
@@ -418,27 +482,23 @@ function handleInput(value) {
             break;
             
         // Запись в память (ЗП)
-        case /zap$/.test(value):
-            if (currentNumber) {
-                register1 = currentNumber;
-                zapFlag = 1;
-                try {
-                    // logger.logMemoryState({ action: 'save', register: 'register1', value: register1 });
-                } catch (e) {
-                    console.error('Ошибка логирования:', e);
-                }
+        case /memSave$/.test(value):
+            zapFlag = 1;
+            try {
+                // logger.logMemoryState({ action: 'save', register: 'register1', value: register1 });
+            } catch (e) {
+                console.error('Ошибка логирования:', e);
             }
+            
             break;
             
         // Вызов из памяти (ВП)
-        case /vp$/.test(value):
-            if (zapFlag) {
-                currentNumber = register1;
-                try {
-                    // logger.logMemoryState({ action: 'recall', register: 'register1', value: register1 });
-                } catch (e) {
-                    console.error('Ошибка логирования:', e);
-                }
+        case /callMem$/.test(value):
+            callMemFlag = 1;
+            try {
+                // logger.logMemoryState({ action: 'recall', register: 'register1', value: register1 });
+            } catch (e) {
+                console.error('Ошибка логирования:', e);
             }
             break;
             
@@ -452,13 +512,31 @@ function handleInput(value) {
                             "\ncurrentExpression: " +
                             currentExpression
                     );
-                currentExpression += currentNumber;}
+                    if(quadricSumFlag == 1){
+                        currentExpression +=currentNumber+"^2)"
+                    }else{
+                        currentExpression += currentNumber;
+                    }
+                }
             }
-            if (bracketCheck(currentExpression) == ">")
-                currentExpression += ")";
-            else if (bracketCheck(currentExpression) == "<") {
-                currentExpression = "(" + currentExpression; // я пока хз работает ли
+            checkBrack = bracketCheck(currentExpression);
+
+            while (!(checkBrack == "=")){
+                if (checkBrack == ">"){
+                    currentExpression += ")";
+                } else if (checkBrack == "<"){
+                    currentExpression = "(" + currentExpression; // я пока хз работает ли
+                }
+                checkBrack = bracketCheck(currentExpression);    
             }
+            console.log(
+            "\nВыражение:",
+            currentExpression,
+            "\nТекущее число:",
+            currentNumber,
+            "\nТекущая операция:",
+            currentOperation
+        );
             calculateResult();
             break;
 
@@ -466,8 +544,20 @@ function handleInput(value) {
             console.warn("Неизвестный ввод: " + value);
             break;
     }
-
+    if (!hasResult){
     updateScreen();
+    }
+}
+
+function normalizeBrackets() {
+    checkBrack = bracketCheck(currentExpression);
+    while (!(checkBrack == "=")){
+        if (checkBrack == ">"){
+            currentExpression += ")";
+        } else if (checkBrack == "<"){
+            currentExpression = "(" + currentExpression; // я пока хз работает ли
+        }    
+    }
 }
 
 /**
@@ -497,10 +587,10 @@ function extractBrackets(expression) {
     let lastBrackets = "";
     let stack = [];
     for (let i = expression.length - 1; i > 0; i--) {
-        if (expression[i] == ")") {
+        if (expression[i] == "(") {
             stack.push(i);
         }
-        if (expression[i] == "(") {
+        if (expression[i] == ")") {
             if (stack.length != 0) {
                 stack.pop();
             }
@@ -519,10 +609,6 @@ function extractBrackets(expression) {
  */
 function bracketFlagCheck(value) {
     switch (true) {
-        case value == "p":
-            currentExpression += tempExpression + currentNumber + "^2)";
-            tempExpression = "";
-            break;
         case lgFlag == 1:
             currentExpression += "log10(" + currentNumber + ")";
             lgFlag = 0;
@@ -584,6 +670,58 @@ function isOperation(operation) {
     else return 0;
 }
 
+function extractLastExpression(expression=currentExpression) {
+    functionList = ['sin', 'cos', 'acos', 'log10', 'ln', 'tan', 'atan', 'sqrt', 'asin',`(${e_const})^`];
+    let trimmed = expression.trimEnd();
+    let n = trimmed.length;
+    
+    if (n === 0 || trimmed[n - 1] !== ')') {
+        return null;
+    }
+
+    let countBrackets = 0;
+    let startIndex = -1;
+
+    for (let i = n - 1; i >= 0; i--) {
+        if (trimmed[i] === ')') {
+            countBrackets++;
+        } else if (trimmed[i] === '(') {
+            countBrackets--;
+        }
+
+        if (countBrackets === 0) {
+            startIndex = i;
+            break;
+        }
+    }
+
+    if (startIndex === -1 || countBrackets !== 0) {
+        return null;
+    }
+
+    let pos = startIndex - 1;
+    while (pos >= 0) {
+        const char = trimmed[pos];
+        if ((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z')) {
+            pos--;
+        } else {
+            break;
+        }
+    }
+
+    const funcStart = pos + 1;
+    const funcName = trimmed.substring(funcStart, startIndex);
+
+    if (funcName && functionList.includes(funcName)) {
+        let brackets=trimmed.substring(funcStart);
+        let beforeBrackets="";
+        return {brackets, beforeBrackets};
+    }
+    let brackets=trimmed.substring(startIndex);
+    let beforeBrackets=trimmed.substring(0,startIndex)
+    return {brackets, beforeBrackets};
+}
+
 /**
  * Вычисление результата выражения
  */
@@ -607,14 +745,31 @@ function calculateResult() {
                 result = window.parser.rez(tokens);
             } else if (typeof math !== 'undefined' && math) {
                 // Запасной вариант с math.js
-                result = math.evaluate(currentExpression);
+                if(currentExpression.includes("cos(acos(")){
+                    currentExpression.replaceAll("cos(acos(","((");
+                }
+                if(currentExpression.includes("acos(cos(")){
+                    currentExpression.replaceAll("acos(cos(","((");
+                }
+                if(currentExpression.includes("sin(asin(")){
+                    currentExpression.replaceAll("sin(asin(","((");
+                }
+                if(currentExpression.includes("asin(sin(")){
+                    currentExpression.replaceAll("asin(sin(","((");
+                }
+                //currentExpression.replace("cos(acos(","((")
+                //if (currentExpression.includes("cos(acos(")){
+                    //result = math.round(math.evaluate(currentExpression),15);
+                //}else{
+                    result = math.evaluate(currentExpression);
+                //}
             } else {
                 throw new Error("Не найдены библиотеки для вычислений");
             }
             
             if (result !== undefined && !isNaN(result)) {
-                currentNumber = result.toString();
-                currentExpression = currentNumber;
+                currentNumber = result;
+                currentExpression = "";
                 
                 try {
                     // logger.logOperation('calculate', [currentExpression], result);
@@ -623,9 +778,17 @@ function calculateResult() {
                 }
             } else {
                 throw new Error("Результат вычисления некорректен");
-            }
+            } 
         }
-    } catch (error) {
+        
+        
+        try {
+            // logger.logError('calculate', error, { expression: currentExpression });
+        } catch (e) {
+            console.error('Ошибка логирования:', e);
+        }
+    }catch (error) {
+        currentNumber = errorMessage; // Отображение ошибки на экране
         console.error(
             "Ошибка вычисления:",
             error,
@@ -636,16 +799,11 @@ function calculateResult() {
             "\nТекущая операция:",
             currentOperation
         );
-        currentNumber = errorMessage; // Отображение ошибки на экране
-        
-        try {
-            // logger.logError('calculate', error, { expression: currentExpression });
-        } catch (e) {
-            console.error('Ошибка логирования:', e);
-        }
     }
     console.log("calculation currentNumber: " + currentNumber);
+    hasResult=true;
     updateScreen();
+    hasResult=true;
 }
 
 // Добавляем проверку на существование элементов перед добавлением обработчиков событий
@@ -694,14 +852,14 @@ document.addEventListener('DOMContentLoaded', function() {
     addEventListenerIfExists("btn_lg", "click", () => handleInput("lg"));
     addEventListenerIfExists("btn_ln", "click", () => handleInput("ln"));
     addEventListenerIfExists("btn_pi", "click", () => handleInput("pi"));
-    addEventListenerIfExists("btn_zap", "click", () => handleInput("zap"));
-    addEventListenerIfExists("btn_vp", "click", () => handleInput("vp"));
-    addEventListenerIfExists("btn_sch", "click", () => handleInput("sch"));
+    addEventListenerIfExists("btn_zap", "click", () => handleInput("memSave"));
+    addEventListenerIfExists("btn_vp", "click", () => handleInput("scienseForm"));
+    addEventListenerIfExists("btn_sch", "click", () => handleInput("callMem"));
     addEventListenerIfExists("btn_cx", "click", () => handleInput("cx"));
     addEventListenerIfExists("btn_sin", "click", () => handleInput("sin"));
     addEventListenerIfExists("btn_cos", "click", () => handleInput("cos"));
     addEventListenerIfExists("btn_tg", "click", () => handleInput("tg"));
-    addEventListenerIfExists("btn_arc", "click", () => handleInput("arc"));
+    addEventListenerIfExists("btn_arc", "click", () => handleInput("ark"));
     addEventListenerIfExists("btn_y_degree", "click", () => handleInput("y_degree"));
     
     // Инициализация экрана

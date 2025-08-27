@@ -285,6 +285,7 @@ function tokensToExpression(tokens) {
  */
 function rez(tokens) {
     try {
+        console.log("hui")
         // Проверка на пустые токены
         if (!tokens || tokens.length === 0) {
             return 0;
